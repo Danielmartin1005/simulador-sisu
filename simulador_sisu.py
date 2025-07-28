@@ -1,4 +1,4 @@
-@st.cache_data
+@st.cache
 def carregar_dados():
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     creds = Credentials.from_service_account_info(st.secrets["google_service_account"], scopes=scopes)
