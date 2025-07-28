@@ -1,5 +1,0 @@
-streamlit
-gspread
-pandas
-unidecode
-google-auth
