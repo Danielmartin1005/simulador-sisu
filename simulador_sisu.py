@@ -1,4 +1,4 @@
-# simulador_sisu.py
+# simulador_sisu.py (versão estável com validação de colunas)
 
 try:
     import streamlit as st
@@ -66,11 +66,20 @@ if st.button("Simular"):
             df_filtrado = df_filtrado[df_filtrado['NO_CURSO'].apply(lambda x: curso_normalizado in normalizar(x))]
 
         if filtro_estado:
-            df_filtrado = df_filtrado[df_filtrado['SG_UF_CAMPUS'].str.upper() == filtro_estado]
+            if 'SG_UF_CAMPUS' in df_filtrado.columns:
+                df_filtrado = df_filtrado[df_filtrado['SG_UF_CAMPUS'].str.upper() == filtro_estado]
+            else:
+                st.error("A coluna SG_UF_CAMPUS não foi encontrada na planilha. Verifique a aba SISU_2024.")
+                st.stop()
 
-        df_filtrado = df_filtrado[
-            df_filtrado['DS_MOD_CONCORRENCIA'].str.strip().str.lower().isin(["ampla concorrência", "ac"])
-        ]
+        if 'DS_MOD_CONCORRENCIA' in df_filtrado.columns:
+            df_filtrado = df_filtrado[
+                df_filtrado['DS_MOD_CONCORRENCIA'].str.strip().str.lower().isin(["ampla concorrência", "ac"])
+            ]
+
+        if 'NU_NOTACORTE' not in df_filtrado.columns:
+            st.error("A coluna NU_NOTACORTE não foi encontrada. Verifique a planilha.")
+            st.stop()
 
         df_filtrado = df_filtrado.sort_values(by='NU_NOTACORTE', ascending=False)
 
