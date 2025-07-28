@@ -9,6 +9,7 @@ import pandas as pd
 from unidecode import unidecode
 import gspread
 from google.oauth2.service_account import Credentials
+import json
 
 # === Função para normalizar texto ===
 def normalizar(texto):
@@ -18,7 +19,7 @@ def normalizar(texto):
 @st.cache_data
 def carregar_dados():
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds = Credentials.from_service_account_file("service_account.json", scopes=scopes)
+    creds = Credentials.from_service_account_info(st.secrets["google_service_account"], scopes=scopes)
     gc = gspread.authorize(creds)
     spreadsheet = gc.open_by_url("https://docs.google.com/spreadsheets/d/1DsmrCrp0Z0gZT6OGKR1jPo2WhHYU7bqvgUoxi1-0HdU/edit")
     worksheet = spreadsheet.worksheet("SISU_2024")
