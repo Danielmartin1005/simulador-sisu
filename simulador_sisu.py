@@ -1,9 +1,10 @@
+# simulador_sisu.py
+
 import streamlit as st
 import pandas as pd
 from unidecode import unidecode
 import gspread
 from google.oauth2.service_account import Credentials
-import json
 
 # === Função para normalizar texto ===
 def normalizar(texto):
@@ -13,21 +14,22 @@ def normalizar(texto):
 @st.cache_data
 def carregar_dados():
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds = Credentials.from_service_account_info(st.secrets["google_service_account"], scopes=scopes)
+    creds = Credentials.from_service_account_info(
+        st.secrets["google_service_account"], scopes=scopes
+    )
     gc = gspread.authorize(creds)
     spreadsheet = gc.open_by_url("https://docs.google.com/spreadsheets/d/1DsmrCrp0Z0gZT6OGKR1jPo2WhHYU7bqvgUoxi1-0HdU/edit")
     worksheet = spreadsheet.worksheet("SISU_2024")
     data = worksheet.get_all_records()
     df = pd.DataFrame(data)
 
-    st.write("Colunas do DataFrame carregado:", df.columns.tolist())
-
     # Tratar notas de corte
-    df['NU_NOTACORTE'] = (
-        df['NU_NOTACORTE'].astype(str).str.replace(',', '.', regex=False).str.strip()
-    )
-    df['NU_NOTACORTE'] = pd.to_numeric(df['NU_NOTACORTE'], errors='coerce')
-    df['NU_NOTACORTE'] = df['NU_NOTACORTE'].apply(lambda x: x / 100 if x > 1000 else x)
+    if "NU_NOTACORTE" in df.columns:
+        df['NU_NOTACORTE'] = (
+            df['NU_NOTACORTE'].astype(str).str.replace(',', '.', regex=False).str.strip()
+        )
+        df['NU_NOTACORTE'] = pd.to_numeric(df['NU_NOTACORTE'], errors='coerce')
+        df['NU_NOTACORTE'] = df['NU_NOTACORTE'].apply(lambda x: x / 100 if x and x > 1000 else x)
     return df
 
 # === Layout do Streamlit ===
@@ -55,30 +57,26 @@ if st.button("Simular"):
         df_sisu = carregar_dados()
         media = (nota_cn + nota_ch + nota_lc + nota_mt + nota_red) / 5
 
+        if "NU_NOTACORTE" not in df_sisu.columns:
+            st.error("Coluna 'NU_NOTACORTE' não encontrada na planilha.")
+            st.stop()
+
         df_filtrado = df_sisu[df_sisu['NU_NOTACORTE'] <= media]
 
-        if filtro_curso:
+        if filtro_curso and "NO_CURSO" in df_filtrado.columns:
             curso_normalizado = normalizar(filtro_curso)
             df_filtrado = df_filtrado[df_filtrado['NO_CURSO'].apply(lambda x: curso_normalizado in normalizar(x))]
 
-        # Verifica se a coluna de UF existe e aplica filtro
-        if 'SG_UF_CAMPUS' in df_filtrado.columns:
-            if filtro_estado:
-                df_filtrado = df_filtrado[df_filtrado['SG_UF_CAMPUS'].str.upper() == filtro_estado]
+        if filtro_estado and "SG_UF_CAMPUS" in df_filtrado.columns:
+            df_filtrado = df_filtrado[df_filtrado['SG_UF_CAMPUS'].str.upper() == filtro_estado]
+
+        if "DS_MOD_CONCORRENCIA" in df_filtrado.columns:
+            df_filtrado = df_filtrado[df_filtrado['DS_MOD_CONCORRENCIA'].str.strip().str.lower().isin(["ampla concorrência", "ac"])]
+
+        if df_filtrado.empty:
+            st.warning("Nenhum curso encontrado com sua média e filtros aplicados.")
         else:
-            st.warning("Coluna de UF não encontrada na planilha. Filtro de estado ignorado.")
-
-        if 'DS_MOD_CONCORRENCIA' in df_filtrado.columns:
-            df_filtrado = df_filtrado[
-                df_filtrado['DS_MOD_CONCORRENCIA'].str.strip().str.lower().isin(["ampla concorrência", "ac"])
-            ]
-
-        if 'NU_NOTACORTE' in df_filtrado.columns:
             df_filtrado = df_filtrado.sort_values(by='NU_NOTACORTE', ascending=False)
-        else:
-            st.error("Coluna 'NU_NOTACORTE' não encontrada para ordenação.")
-
-        if not df_filtrado.empty:
             st.success(f"{len(df_filtrado)} cursos encontrados com sua média: {media:.2f}")
             st.dataframe(df_filtrado[[
                 'NO_IES', 'NO_CURSO', 'DS_TURNO', 'SG_UF_CAMPUS',
@@ -91,5 +89,3 @@ if st.button("Simular"):
                 file_name=f"relatorio_sisu_{int(media)}.csv",
                 mime='text/csv'
             )
-        else:
-            st.warning("Nenhum curso encontrado com sua média e filtros aplicados.")
