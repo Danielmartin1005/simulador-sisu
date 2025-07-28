@@ -1,15 +1,8 @@
-# simulador_sisu.py
-
-try:
-    import streamlit as st
-except ModuleNotFoundError:
-    raise ModuleNotFoundError("O módulo 'streamlit' não está instalado. Execute 'pip install streamlit' no terminal antes de rodar este app.")
-
+import streamlit as st
 import pandas as pd
 from unidecode import unidecode
 import gspread
 from google.oauth2.service_account import Credentials
-import json
 
 # === Função para normalizar texto ===
 def normalizar(texto):
@@ -32,6 +25,10 @@ def carregar_dados():
     )
     df['NU_NOTACORTE'] = pd.to_numeric(df['NU_NOTACORTE'], errors='coerce')
     df['NU_NOTACORTE'] = df['NU_NOTACORTE'].apply(lambda x: x / 100 if x > 1000 else x)
+
+    # Exibir colunas para debugging
+    st.write("Colunas do DataFrame carregado:", df.columns.tolist())
+
     return df
 
 # === Layout do Streamlit ===
@@ -65,20 +62,29 @@ if st.button("Simular"):
             curso_normalizado = normalizar(filtro_curso)
             df_filtrado = df_filtrado[df_filtrado['NO_CURSO'].apply(lambda x: curso_normalizado in normalizar(x))]
 
-        if filtro_estado:
-            df_filtrado = df_filtrado[df_filtrado['SG_UF_CAMPUS'].str.upper() == filtro_estado]
+        # Identificar coluna de UF
+        col_uf = next((col for col in df_filtrado.columns if 'uf' in col.lower()), None)
 
-        df_filtrado = df_filtrado[
-            df_filtrado['DS_MOD_CONCORRENCIA'].str.strip().str.lower().isin(["ampla concorrência", "ac"])
-        ]
+        if filtro_estado and col_uf:
+            df_filtrado = df_filtrado[df_filtrado[col_uf].str.upper() == filtro_estado]
+        elif filtro_estado:
+            st.warning("Coluna de UF não encontrada na planilha.")
+
+        if 'DS_MOD_CONCORRENCIA' in df_filtrado.columns:
+            df_filtrado = df_filtrado[
+                df_filtrado['DS_MOD_CONCORRENCIA'].str.strip().str.lower().isin(["ampla concorrência", "ac"])
+            ]
 
         df_filtrado = df_filtrado.sort_values(by='NU_NOTACORTE', ascending=False)
 
         if not df_filtrado.empty:
             st.success(f"{len(df_filtrado)} cursos encontrados com sua média: {media:.2f}")
-            st.dataframe(df_filtrado[[
-                'NO_IES', 'NO_CURSO', 'DS_TURNO', 'SG_UF_CAMPUS',
-                'DS_MOD_CONCORRENCIA', 'NU_NOTACORTE']].head(30))
+            colunas_exibir = [col for col in [
+                'NO_IES', 'NO_CURSO', 'DS_TURNO', col_uf,
+                'DS_MOD_CONCORRENCIA', 'NU_NOTACORTE'
+            ] if col in df_filtrado.columns]
+
+            st.dataframe(df_filtrado[colunas_exibir].head(30))
 
             csv = df_filtrado.to_csv(index=False).encode('utf-8')
             st.download_button(
