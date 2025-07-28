@@ -1,15 +1,8 @@
-# simulador_sisu.py (versão estável com validação de colunas)
-
-try:
-    import streamlit as st
-except ModuleNotFoundError:
-    raise ModuleNotFoundError("O módulo 'streamlit' não está instalado. Execute 'pip install streamlit' no terminal antes de rodar este app.")
-
+import streamlit as st
 import pandas as pd
 from unidecode import unidecode
 import gspread
 from google.oauth2.service_account import Credentials
-import json
 
 # === Função para normalizar texto ===
 def normalizar(texto):
@@ -19,7 +12,9 @@ def normalizar(texto):
 @st.cache_data
 def carregar_dados():
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds = Credentials.from_service_account_info(st.secrets["google_service_account"], scopes=scopes)
+    creds = Credentials.from_service_account_info(
+        st.secrets["google_service_account"], scopes=scopes
+    )
     gc = gspread.authorize(creds)
     spreadsheet = gc.open_by_url("https://docs.google.com/spreadsheets/d/1DsmrCrp0Z0gZT6OGKR1jPo2WhHYU7bqvgUoxi1-0HdU/edit")
     worksheet = spreadsheet.worksheet("SISU_2024")
@@ -27,11 +22,16 @@ def carregar_dados():
     df = pd.DataFrame(data)
 
     # Tratar notas de corte
-    df['NU_NOTACORTE'] = (
-        df['NU_NOTACORTE'].astype(str).str.replace(',', '.', regex=False).str.strip()
-    )
-    df['NU_NOTACORTE'] = pd.to_numeric(df['NU_NOTACORTE'], errors='coerce')
-    df['NU_NOTACORTE'] = df['NU_NOTACORTE'].apply(lambda x: x / 100 if x > 1000 else x)
+    if 'NU_NOTACORTE' in df.columns:
+        df['NU_NOTACORTE'] = (
+            df['NU_NOTACORTE'].astype(str).str.replace(',', '.', regex=False).str.strip()
+        )
+        df['NU_NOTACORTE'] = pd.to_numeric(df['NU_NOTACORTE'], errors='coerce')
+        df['NU_NOTACORTE'] = df['NU_NOTACORTE'].apply(lambda x: x / 100 if x > 1000 else x)
+    else:
+        st.error("Coluna 'NU_NOTACORTE' não encontrada na planilha.")
+        st.stop()
+
     return df
 
 # === Layout do Streamlit ===
@@ -63,22 +63,25 @@ if st.button("Simular"):
 
         if filtro_curso:
             curso_normalizado = normalizar(filtro_curso)
-            df_filtrado = df_filtrado[df_filtrado['NO_CURSO'].apply(lambda x: curso_normalizado in normalizar(x))]
+            if 'NO_CURSO' in df_filtrado.columns:
+                df_filtrado = df_filtrado[df_filtrado['NO_CURSO'].apply(lambda x: curso_normalizado in normalizar(x))]
+            else:
+                st.error("Coluna 'NO_CURSO' não encontrada na planilha.")
+                st.stop()
 
         if filtro_estado:
             if 'SG_UF_CAMPUS' in df_filtrado.columns:
                 df_filtrado = df_filtrado[df_filtrado['SG_UF_CAMPUS'].str.upper() == filtro_estado]
             else:
-                st.error("A coluna SG_UF_CAMPUS não foi encontrada na planilha. Verifique a aba SISU_2024.")
+                st.error("Coluna 'SG_UF_CAMPUS' não encontrada na planilha.")
                 st.stop()
 
         if 'DS_MOD_CONCORRENCIA' in df_filtrado.columns:
             df_filtrado = df_filtrado[
                 df_filtrado['DS_MOD_CONCORRENCIA'].str.strip().str.lower().isin(["ampla concorrência", "ac"])
             ]
-
-        if 'NU_NOTACORTE' not in df_filtrado.columns:
-            st.error("A coluna NU_NOTACORTE não foi encontrada. Verifique a planilha.")
+        else:
+            st.error("Coluna 'DS_MOD_CONCORRENCIA' não encontrada na planilha.")
             st.stop()
 
         df_filtrado = df_filtrado.sort_values(by='NU_NOTACORTE', ascending=False)
